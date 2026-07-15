@@ -13,6 +13,15 @@ LENGTH_MS=10000
 KEEP_MS=200
 # ---------------------
 
+type_text() {
+    local text="$1"
+    if command -v ydotool &>/dev/null && systemctl -q is-active ydotoold 2>/dev/null; then
+        ydotool type "${text}" 2>/dev/null || true
+    else
+        wtype "${text}" 2>/dev/null || true
+    fi
+}
+
 WS_PIDFILE="/tmp/whisper-dictation-ws.pid"
 MON_PIDFILE="/tmp/whisper-dictation-mon.pid"
 OUTFILE="/tmp/whisper-dictation-output.txt"
@@ -74,7 +83,7 @@ start() {
             fi
 
             if [ -n "$delta" ]; then
-                wtype "${delta} " 2>/dev/null || true
+                type_text "${delta} "
             fi
 
             prev="$line"
@@ -146,7 +155,7 @@ stop() {
     sleep 0.3
 
     if [ -n "$full" ]; then
-        wtype "${full} " 2>/dev/null || true
+        type_text "${full} "
         echo "$full" | wl-copy 2>/dev/null || true
         notify-send -t 3000 "Dictation" "“${full:0:80}” — в буфере"
     else
