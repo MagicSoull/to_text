@@ -2,8 +2,10 @@
 set -euo pipefail
 
 # --- Configuration ---
+# For faster dictation use small-q5_1 (~3-5s per chunk)
+# For better accuracy use large-v3-turbo-q5_0 (~10-12s per chunk)
 WHISPER_STREAM="/home/void/whisper.cpp/build/bin/whisper-stream"
-MODEL="/home/void/whisper.cpp/models/ggml-large-v3-turbo-q5_0.bin"
+MODEL="/home/void/whisper.cpp/models/ggml-small-q5_1.bin"
 LANGUAGE="ru"
 THREADS=8
 STEP_MS=3000
@@ -45,10 +47,9 @@ start() {
         full=""
 
         while IFS= read -r line <&3; do
+            line=${line//$'\r'/}
             line=$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
             [ -z "$line" ] && continue
-
-            # fast path: same as previous line (no new content)
             [ "$line" = "$prev" ] && continue
 
             if [ -z "$prev" ]; then
@@ -102,6 +103,22 @@ stop() {
 
     notify-send -t 5000 "Dictation" "Transcribing…"
 
+    # Wait for at least one inference to complete (up to 25s)
+    local deadline=$(($(date +%s) + 25))
+    local waited=false
+    while [ $(date +%s) -lt $deadline ]; do
+        if [ -s "$FULLFILE" ]; then
+            waited=true
+            sleep 1.5
+            break
+        fi
+        if [ -n "$ws_pid" ] && ! kill -0 "$ws_pid" 2>/dev/null; then
+            waited=true
+            break
+        fi
+        sleep 0.5
+    done
+
     # Kill whisper-stream — tail --pid detects death, monitor exits
     if [ -n "$ws_pid" ]; then
         kill "$ws_pid" 2>/dev/null || true
@@ -112,7 +129,7 @@ stop() {
         wait "$mon_pid" 2>/dev/null || true
     fi
 
-    # Force kill if whisper-stream still hanging
+    # Force kill if still hanging
     if [ -n "$ws_pid" ]; then
         kill -0 "$ws_pid" 2>/dev/null && kill -9 "$ws_pid" 2>/dev/null || true
         wait "$ws_pid" 2>/dev/null || true
